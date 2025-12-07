@@ -104,6 +104,14 @@ function loadFromEnvironment() {
       monitorColumns: parseIntArray(process.env.MONITOR_COLUMNS),
       ignoreHeaderChanges: parseBoolean(process.env.IGNORE_HEADER_CHANGES, false),
     },
+    webhook: {
+      enabled: parseBoolean(process.env.WEBHOOK_ENABLED, false),
+      endpointUrl: process.env.WEBHOOK_ENDPOINT_URL || null,
+      timeoutMs: parseInteger(process.env.WEBHOOK_TIMEOUT_MS, 10000),
+      maxRetries: parseInteger(process.env.WEBHOOK_MAX_RETRIES, 3),
+      retryDelayMs: parseInteger(process.env.WEBHOOK_RETRY_DELAY_MS, 1000),
+      includeMetadata: parseBoolean(process.env.WEBHOOK_INCLUDE_METADATA, true),
+    },
   };
 }
 

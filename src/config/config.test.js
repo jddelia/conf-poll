@@ -50,6 +50,14 @@ describe('Configuration', () => {
         monitorColumns: [],
         ignoreHeaderChanges: false,
       },
+      webhook: {
+        enabled: false,
+        endpointUrl: null,
+        timeoutMs: 10000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
+        includeMetadata: true,
+      },
     };
 
     it('should validate a correct configuration', () => {

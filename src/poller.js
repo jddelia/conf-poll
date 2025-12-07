@@ -14,8 +14,9 @@ import { EventEmitter } from 'events';
 import { createConfluenceClient } from './confluence/client.js';
 import { extractTable, normalizeTableForComparison } from './confluence/parser.js';
 import { getStorage } from './storage/store.js';
-import { compareTableData, formatChangeReport, createNotificationMessage } from './diff/comparator.js';
+import { compareTableData, formatChangeReport, createNotificationMessage, getAffectedRows } from './diff/comparator.js';
 import { getNotifier } from './notify/notifier.js';
+import { getWebhookPoster } from './webhook/poster.js';
 import { createChildLogger } from './utils/logger.js';
 
 const logger = createChildLogger({ component: 'poller' });
@@ -52,6 +53,7 @@ export class Poller extends EventEmitter {
     this.client = null;
     this.storage = null;
     this.notifier = null;
+    this.webhookPoster = null;
   }
 
   /**
@@ -68,6 +70,12 @@ export class Poller extends EventEmitter {
 
     // Initialize notifier
     this.notifier = getNotifier(this.config.notifications);
+
+    // Initialize webhook poster (if enabled)
+    this.webhookPoster = getWebhookPoster(this.config.webhook);
+    if (this.webhookPoster) {
+      logger.info('Webhook posting enabled');
+    }
 
     logger.info('Poller initialized');
     this.emit('initialized');
@@ -222,6 +230,41 @@ export class Poller extends EventEmitter {
             changeReport,
             { pageTitle: pageContent.title }
           );
+        }
+
+        // Post affected rows to webhook if enabled
+        if (this.webhookPoster) {
+          const affectedRows = getAffectedRows(changeReport);
+
+          if (affectedRows.length > 0) {
+            logger.info(
+              { rowCount: affectedRows.length },
+              'Posting affected rows to webhook'
+            );
+
+            const webhookResults = await this.webhookPoster.postBatch(
+              affectedRows.map((affected) => ({
+                rowData: affected.rowData,
+                metadata: {
+                  pageTitle: pageContent.title,
+                  version: versionInfo.number,
+                  changeType: affected.changeType,
+                  rowIndex: affected.rowIndex,
+                },
+              })),
+              table.headers
+            );
+
+            logger.info(
+              {
+                successful: webhookResults.successful,
+                failed: webhookResults.failed,
+              },
+              'Webhook posting completed'
+            );
+
+            this.emit('webhook:posted', webhookResults);
+          }
         }
 
         this.emit('poll:changed', {

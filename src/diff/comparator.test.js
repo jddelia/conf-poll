@@ -10,6 +10,7 @@ import {
   compareTableData,
   formatChangeReport,
   createNotificationMessage,
+  getAffectedRows,
 } from './comparator.js';
 
 describe('Comparator', () => {
@@ -219,6 +220,89 @@ describe('Comparator', () => {
 
       assert.ok(message.includes('Test Page'));
       assert.ok(message.includes('v42'));
+    });
+  });
+
+  describe('getAffectedRows', () => {
+    it('should return empty array for no changes', () => {
+      const report = { hasChanges: false };
+      const rows = getAffectedRows(report);
+      assert.deepStrictEqual(rows, []);
+    });
+
+    it('should return added rows', () => {
+      const report = {
+        hasChanges: true,
+        rowsAdded: [
+          { type: 'added', row: 0, values: ['A', 'B'] },
+          { type: 'added', row: 1, values: ['C', 'D'] },
+        ],
+        rowsRemoved: [],
+        cellsModified: [],
+      };
+
+      const rows = getAffectedRows(report);
+
+      assert.strictEqual(rows.length, 2);
+      assert.strictEqual(rows[0].changeType, 'added');
+      assert.deepStrictEqual(rows[0].rowData, ['A', 'B']);
+      assert.strictEqual(rows[1].rowIndex, 1);
+    });
+
+    it('should return modified rows with deduplication', () => {
+      const report = {
+        hasChanges: true,
+        rowsAdded: [],
+        rowsRemoved: [],
+        cellsModified: [
+          { type: 'modified', row: 0, column: 0, currentRowData: ['X', 'B'] },
+          { type: 'modified', row: 0, column: 1, currentRowData: ['X', 'Y'] },
+          { type: 'modified', row: 2, column: 0, currentRowData: ['E', 'F'] },
+        ],
+      };
+
+      const rows = getAffectedRows(report);
+
+      assert.strictEqual(rows.length, 2);
+      assert.strictEqual(rows[0].rowIndex, 0);
+      assert.strictEqual(rows[0].changeType, 'modified');
+      assert.strictEqual(rows[1].rowIndex, 2);
+    });
+
+    it('should not include removed rows', () => {
+      const report = {
+        hasChanges: true,
+        rowsAdded: [],
+        rowsRemoved: [
+          { type: 'removed', row: 5, values: ['Old', 'Data'] },
+        ],
+        cellsModified: [],
+      };
+
+      const rows = getAffectedRows(report);
+
+      assert.strictEqual(rows.length, 0);
+    });
+
+    it('should combine added and modified rows sorted by index', () => {
+      const report = {
+        hasChanges: true,
+        rowsAdded: [
+          { type: 'added', row: 5, values: ['New', 'Row'] },
+        ],
+        rowsRemoved: [],
+        cellsModified: [
+          { type: 'modified', row: 2, column: 0, currentRowData: ['Mod', 'Row'] },
+        ],
+      };
+
+      const rows = getAffectedRows(report);
+
+      assert.strictEqual(rows.length, 2);
+      assert.strictEqual(rows[0].rowIndex, 2);
+      assert.strictEqual(rows[0].changeType, 'modified');
+      assert.strictEqual(rows[1].rowIndex, 5);
+      assert.strictEqual(rows[1].changeType, 'added');
     });
   });
 });

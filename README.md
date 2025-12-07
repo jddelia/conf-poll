@@ -6,7 +6,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-36%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-62%20passing-brightgreen.svg)](#testing)
 
 *Monitor Confluence tables for changes without webhooks*
 
@@ -26,6 +26,7 @@
 - [API & Components](#api--components)
 - [Change Detection](#change-detection)
 - [Notifications](#notifications)
+- [Webhook Posting](#webhook-posting)
 - [Error Handling](#error-handling)
 - [Security](#security)
 - [Performance](#performance)
@@ -88,6 +89,12 @@ Instead of webhooks, conf-poll uses an efficient polling strategy:
   - Discord webhooks with embeds
   - Extensible notification interface
 
+- **Webhook Posting**
+  - Post changed rows to external endpoints
+  - Configurable retry with exponential backoff
+  - Row deduplication (one post per affected row)
+  - Optional metadata in payload
+
 ### Production Features
 
 - **Robust Error Handling**
@@ -122,7 +129,7 @@ Instead of webhooks, conf-poll uses an efficient polling strategy:
   - Status dashboard
 
 - **Comprehensive Test Suite**
-  - 36 unit tests covering core modules
+  - 62 unit tests covering core modules
   - Node.js built-in test runner
   - No external test framework dependencies
 
@@ -173,6 +180,7 @@ Instead of webhooks, conf-poll uses an efficient polling strategy:
 | **Storage** | `src/storage/store.js` | SQLite persistence, history management |
 | **Comparator** | `src/diff/comparator.js` | Change detection, diff generation |
 | **Notifier** | `src/notify/notifier.js` | Multi-channel notifications |
+| **Webhook Poster** | `src/webhook/poster.js` | Posts row changes to external endpoints |
 | **Config** | `src/config/index.js` | Configuration loading and validation |
 | **Logger** | `src/utils/logger.js` | Structured logging (Pino) |
 
@@ -327,6 +335,17 @@ cp .env.example .env
 | `MONITOR_COLUMNS` | - | Comma-separated column indices (empty = all) |
 | `IGNORE_HEADER_CHANGES` | `false` | Skip header row in comparison |
 
+#### Webhook Posting Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBHOOK_ENABLED` | `false` | Enable posting row changes to endpoint |
+| `WEBHOOK_ENDPOINT_URL` | - | URL to POST changes to (required if enabled) |
+| `WEBHOOK_TIMEOUT_MS` | `10000` | Request timeout in milliseconds |
+| `WEBHOOK_MAX_RETRIES` | `3` | Maximum retry attempts on failure |
+| `WEBHOOK_RETRY_DELAY_MS` | `1000` | Base delay between retries |
+| `WEBHOOK_INCLUDE_METADATA` | `true` | Include page/version metadata in payload |
+
 ### Example Configuration
 
 ```bash
@@ -345,6 +364,10 @@ MONITOR_COLUMNS=0,2,4
 
 # Notifications
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T00/B00/XXX
+
+# Webhook posting (post changed rows to external API)
+WEBHOOK_ENABLED=true
+WEBHOOK_ENDPOINT_URL=https://api.example.com/row-changes
 
 # Logging
 LOG_LEVEL=info
@@ -734,6 +757,123 @@ async sendToCustom(message, report) {
 
 ---
 
+## Webhook Posting
+
+The webhook posting feature allows you to send changed row data to an external API endpoint when changes are detected. This is useful for triggering workflows, updating external systems, or feeding data into automation pipelines.
+
+### How It Works
+
+1. When a table change is detected, the poller identifies all affected rows
+2. Each affected row (added or modified) is posted individually to your endpoint
+3. Removed rows are not posted (as the data no longer exists)
+4. Multiple cell changes in the same row result in a single POST (deduplication)
+
+### Enabling Webhook Posting
+
+```bash
+# In your .env file
+WEBHOOK_ENABLED=true
+WEBHOOK_ENDPOINT_URL=https://your-api.example.com/row-changes
+```
+
+### Payload Format
+
+Each POST request contains:
+
+```javascript
+{
+  "input": "Column1: Value1 | Column2: Value2 | Column3: Value3"
+}
+```
+
+The `input` field contains the row data formatted as a pipe-separated string. If column headers are available, values are prefixed with header names.
+
+### Payload with Metadata
+
+When `WEBHOOK_INCLUDE_METADATA=true` (default), additional context is included:
+
+```javascript
+{
+  "input": "Name: John Doe | Status: Complete | Due: 2024-01-15",
+  "_metadata": {
+    "pageTitle": "Project Tasks",
+    "pageVersion": 42,
+    "changeType": "modified",  // "added" or "modified"
+    "rowIndex": 3,
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "source": "conf-poll"
+  }
+}
+```
+
+### Retry Behavior
+
+| Scenario | Behavior |
+|----------|----------|
+| Timeout | Retry up to `WEBHOOK_MAX_RETRIES` with exponential backoff |
+| 5xx Error | Retry with exponential backoff |
+| 429 Rate Limited | Retry with exponential backoff |
+| 4xx Client Error | No retry (check endpoint configuration) |
+| Network Error | Retry with exponential backoff |
+
+### Example: Posting to n8n Webhook
+
+```bash
+WEBHOOK_ENABLED=true
+WEBHOOK_ENDPOINT_URL=https://your-n8n-instance.com/webhook/abc123
+WEBHOOK_INCLUDE_METADATA=true
+```
+
+### Example: Posting to Make (Integromat)
+
+```bash
+WEBHOOK_ENABLED=true
+WEBHOOK_ENDPOINT_URL=https://hook.make.com/your-webhook-id
+WEBHOOK_INCLUDE_METADATA=false  # Make prefers simpler payloads
+```
+
+### Programmatic Usage
+
+```javascript
+import { getWebhookPoster } from './webhook/poster.js';
+
+const poster = getWebhookPoster({
+  enabled: true,
+  endpointUrl: 'https://api.example.com/webhook',
+  timeoutMs: 10000,
+  maxRetries: 3,
+});
+
+// Post a single row change
+const result = await poster.postRowChange(
+  ['John Doe', 'Complete', '2024-01-15'],
+  {
+    headers: ['Name', 'Status', 'Due Date'],
+    metadata: {
+      pageTitle: 'Tasks',
+      version: 42,
+      changeType: 'modified',
+      rowIndex: 3,
+    },
+  }
+);
+
+// result: { success: true, response: { status: 200, data: {...} } }
+// or: { success: false, error: 'Connection refused' }
+```
+
+### Events
+
+The poller emits a `webhook:posted` event after posting:
+
+```javascript
+poller.on('webhook:posted', ({ successful, failed, results }) => {
+  console.log(`Posted ${successful} rows, ${failed} failures`);
+});
+```
+
+---
+
 ## Error Handling
 
 ### Retry Strategy
@@ -851,8 +991,9 @@ node --test src/confluence/parser.test.js
 |--------|-------|----------|
 | Configuration | 8 | Schema validation, error cases |
 | Table Parser | 16 | HTML parsing, edge cases |
-| Comparator | 12 | Diff detection, formatting |
-| **Total** | **36** | Core functionality |
+| Comparator | 17 | Diff detection, formatting, affected rows |
+| Webhook Poster | 21 | Payload formatting, error handling, retry logic |
+| **Total** | **62** | Core functionality |
 
 ### Test Categories
 
@@ -877,6 +1018,14 @@ node --test src/confluence/parser.test.js
    - Row addition/removal
    - Initial data handling
    - Report formatting
+   - Affected rows extraction and deduplication
+
+4. **Webhook Poster Tests** (`src/webhook/poster.test.js`)
+   - Row formatting with/without headers
+   - Payload building with metadata
+   - URL sanitization for logging
+   - Error classification (retryable vs non-retryable)
+   - Singleton instance management
 
 ---
 
@@ -1255,6 +1404,9 @@ conf-poll/
 │   │   └── comparator.test.js# Comparator tests
 │   ├── notify/
 │   │   └── notifier.js       # Notifications
+│   ├── webhook/
+│   │   ├── poster.js         # Webhook posting
+│   │   └── poster.test.js    # Webhook tests
 │   └── utils/
 │       └── logger.js         # Pino logger
 ├── data/                      # SQLite database (gitignored)
