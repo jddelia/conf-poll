@@ -19,6 +19,7 @@ const logger = createChildLogger({ component: 'comparator' });
  * @property {string} [columnHeader] - Column header if available
  * @property {string} oldValue - Previous value
  * @property {string} newValue - New value
+ * @property {string[]} currentRowData - Full current row data (for webhook posting)
  */
 
 /**
@@ -123,6 +124,7 @@ export function compareTableData(oldData, newData, options = {}) {
           columnHeader: headers[colIdx] || `Column ${colIdx + 1}`,
           oldValue: oldVal,
           newValue: newVal,
+          currentRowData: [...newRow], // Include full current row data for webhook posting
         });
       }
     }
@@ -323,9 +325,54 @@ export function deepCompare(oldData, newData) {
   return diff(oldData, newData) || [];
 }
 
+/**
+ * Extracts unique affected rows from a change report for webhook posting.
+ * Deduplicates rows that have multiple cell changes.
+ * @param {ChangeReport} report - Change report
+ * @returns {Array<{ rowIndex: number, rowData: string[], changeType: string }>}
+ */
+export function getAffectedRows(report) {
+  if (!report.hasChanges) {
+    return [];
+  }
+
+  const affectedRows = new Map();
+
+  // Process added rows
+  for (const row of report.rowsAdded) {
+    const key = `added-${row.row}`;
+    if (!affectedRows.has(key)) {
+      affectedRows.set(key, {
+        rowIndex: row.row,
+        rowData: row.values,
+        changeType: 'added',
+      });
+    }
+  }
+
+  // Process modified cells (deduplicate by row)
+  for (const cell of report.cellsModified) {
+    const key = `modified-${cell.row}`;
+    if (!affectedRows.has(key)) {
+      affectedRows.set(key, {
+        rowIndex: cell.row,
+        rowData: cell.currentRowData,
+        changeType: 'modified',
+      });
+    }
+  }
+
+  // Note: We don't include removed rows in webhook posts since the data no longer exists
+  // in the current table state
+
+  // Convert to array and sort by row index
+  return Array.from(affectedRows.values()).sort((a, b) => a.rowIndex - b.rowIndex);
+}
+
 export default {
   compareTableData,
   formatChangeReport,
   createNotificationMessage,
   deepCompare,
+  getAffectedRows,
 };

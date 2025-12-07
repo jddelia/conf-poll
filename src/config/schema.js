@@ -107,6 +107,50 @@ export const notificationConfigSchema = z.object({
 });
 
 /**
+ * Webhook posting configuration schema
+ * For posting row changes to external endpoints
+ */
+export const webhookConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  endpointUrl: z
+    .string()
+    .url('WEBHOOK_ENDPOINT_URL must be a valid URL')
+    .optional()
+    .nullable(),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1000, 'Webhook timeout must be at least 1 second')
+    .max(60000, 'Webhook timeout cannot exceed 60 seconds')
+    .default(10000),
+  maxRetries: z
+    .number()
+    .int()
+    .min(0)
+    .max(10)
+    .default(3),
+  retryDelayMs: z
+    .number()
+    .int()
+    .min(100)
+    .max(30000)
+    .default(1000),
+  includeMetadata: z.boolean().default(true),
+}).refine(
+  (config) => {
+    // If enabled, endpoint URL must be provided
+    if (config.enabled && !config.endpointUrl) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: 'WEBHOOK_ENDPOINT_URL is required when WEBHOOK_ENABLED is true',
+    path: ['endpointUrl'],
+  }
+);
+
+/**
  * Table parsing configuration schema
  */
 export const tableConfigSchema = z.object({
@@ -132,6 +176,7 @@ export const appConfigSchema = z.object({
   logging: loggingConfigSchema,
   notifications: notificationConfigSchema,
   table: tableConfigSchema,
+  webhook: webhookConfigSchema,
 });
 
 /**
@@ -143,4 +188,5 @@ export const appConfigSchema = z.object({
  * @typedef {z.infer<typeof loggingConfigSchema>} LoggingConfig
  * @typedef {z.infer<typeof notificationConfigSchema>} NotificationConfig
  * @typedef {z.infer<typeof tableConfigSchema>} TableConfig
+ * @typedef {z.infer<typeof webhookConfigSchema>} WebhookConfig
  */
