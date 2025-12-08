@@ -52,16 +52,80 @@ function cleanCellText(text) {
  * Handles special Confluence elements like user mentions, links, etc.
  * @param {cheerio.CheerioAPI} $ - Cheerio instance
  * @param {cheerio.Element} cell - Cell element
+ * @param {object} [options] - Extraction options
+ * @param {boolean} [options.showUserNames=true] - Whether to show user display names
  * @returns {string} Extracted text
  */
-function extractCellText($, cell) {
+function extractCellText($, cell, options = {}) {
+  const { showUserNames = true } = options;
   const $cell = $(cell);
 
-  // Handle user mentions
-  $cell.find('ri\\:user, ac\\:link').each((_, el) => {
+  // Handle user mentions (ac:link elements containing ri:user)
+  $cell.find('ac\\:link').each((_, el) => {
     const $el = $(el);
-    const userName = $el.attr('ri:userkey') || $el.text() || '[user]';
-    $el.replaceWith(` @${userName} `);
+    const hasUser = $el.find('ri\\:user').length > 0;
+
+    if (hasUser) {
+      if (showUserNames) {
+        // Try to get display name from plain-text-link-body first (most reliable)
+        let displayName = '';
+
+        const plainTextBody = $el.find('ac\\:plain-text-link-body');
+        if (plainTextBody.length > 0) {
+          // Get text content - Cheerio may convert CDATA to comments
+          displayName = plainTextBody.text().trim();
+
+          // If empty, try to extract from HTML (handles CDATA converted to comments)
+          if (!displayName) {
+            const bodyHtml = plainTextBody.html() || '';
+            // Extract content from CDATA comment: <!--[CDATA[content]]--> or just content
+            const cdataMatch = bodyHtml.match(/<!--\[CDATA\[(.*?)\]\]-->/);
+            if (cdataMatch) {
+              displayName = cdataMatch[1].trim();
+            }
+          }
+        }
+
+        // Fallback: try link-body
+        if (!displayName) {
+          displayName = $el.find('ac\\:link-body').text().trim();
+        }
+
+        // Fallback: try the direct text content (excluding nested elements)
+        if (!displayName) {
+          displayName = $el.clone().children().remove().end().text().trim();
+        }
+
+        // Last resort: use a placeholder
+        if (!displayName) {
+          displayName = '[user]';
+        }
+
+        $el.replaceWith(` @${displayName} `);
+      } else {
+        // Redact user names
+        $el.replaceWith(' @[redacted] ');
+      }
+    }
+  });
+
+  // Handle standalone ri:user elements (without ac:link wrapper)
+  $cell.find('ri\\:user').each((_, el) => {
+    const $el = $(el);
+    // Check if already processed (parent is ac:link)
+    if ($el.parent('ac\\:link').length > 0) {
+      return; // Skip, already handled above
+    }
+
+    if (showUserNames) {
+      // For standalone ri:user, try to get account-id or userkey as fallback
+      const accountId = $el.attr('ri:account-id');
+      const userKey = $el.attr('ri:userkey');
+      // These are IDs, not display names, so use placeholder
+      $el.replaceWith(' @[user] ');
+    } else {
+      $el.replaceWith(' @[redacted] ');
+    }
   });
 
   // Handle status macros
@@ -87,9 +151,11 @@ function extractCellText($, cell) {
  * @param {cheerio.CheerioAPI} $ - Cheerio instance
  * @param {cheerio.Element} table - Table element
  * @param {number} tableIndex - Index of this table
+ * @param {object} [options] - Parsing options
+ * @param {boolean} [options.showUserNames=true] - Whether to show user display names
  * @returns {ParsedTable}
  */
-function parseTableElement($, table, tableIndex) {
+function parseTableElement($, table, tableIndex, options = {}) {
   const $table = $(table);
   const rows = [];
   let maxColumns = 0;
@@ -105,7 +171,7 @@ function parseTableElement($, table, tableIndex) {
       const colSpan = parseInt($cell.attr('colspan') || '1', 10);
 
       cells.push({
-        text: extractCellText($, cell),
+        text: extractCellText($, cell, options),
         html: $cell.html() || '',
         isHeader,
         rowSpan,
@@ -144,9 +210,11 @@ function parseTableElement($, table, tableIndex) {
 /**
  * Parses all tables from Confluence page HTML content
  * @param {string} htmlContent - Page body HTML
+ * @param {object} [options] - Parsing options
+ * @param {boolean} [options.showUserNames=true] - Whether to show user display names
  * @returns {ParsedTable[]} Array of parsed tables
  */
-export function parseTablesFromHtml(htmlContent) {
+export function parseTablesFromHtml(htmlContent, options = {}) {
   if (!htmlContent || typeof htmlContent !== 'string') {
     logger.warn('Empty or invalid HTML content provided');
     return [];
@@ -163,7 +231,7 @@ export function parseTablesFromHtml(htmlContent) {
 
   $('table').each((index, table) => {
     try {
-      const parsedTable = parseTableElement($, table, index);
+      const parsedTable = parseTableElement($, table, index, options);
       tables.push(parsedTable);
       logger.debug(
         {
@@ -189,10 +257,12 @@ export function parseTablesFromHtml(htmlContent) {
  * Extracts a specific table by index
  * @param {string} htmlContent - Page body HTML
  * @param {number} tableIndex - Target table index (0-based)
+ * @param {object} [options] - Parsing options
+ * @param {boolean} [options.showUserNames=true] - Whether to show user display names
  * @returns {ParsedTable|null} Parsed table or null if not found
  */
-export function extractTable(htmlContent, tableIndex) {
-  const tables = parseTablesFromHtml(htmlContent);
+export function extractTable(htmlContent, tableIndex, options = {}) {
+  const tables = parseTablesFromHtml(htmlContent, options);
 
   if (tableIndex >= tables.length) {
     logger.warn(

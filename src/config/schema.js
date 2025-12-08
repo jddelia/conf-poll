@@ -164,6 +164,7 @@ export const tableConfigSchema = z.object({
     .optional()
     .default([]),
   ignoreHeaderChanges: z.boolean().default(false),
+  showUserNames: z.boolean().default(true),
 });
 
 /**

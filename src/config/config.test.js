@@ -49,6 +49,7 @@ describe('Configuration', () => {
         targetTableIndex: 0,
         monitorColumns: [],
         ignoreHeaderChanges: false,
+        showUserNames: true,
       },
       webhook: {
         enabled: false,
