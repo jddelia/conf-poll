@@ -261,4 +261,115 @@ describe('Table Parser', () => {
       assert.deepStrictEqual(normalized.rows[0], ['Data']);
     });
   });
+
+  describe('user mention handling', () => {
+    it('should extract user display name from ac:plain-text-link-body', () => {
+      const html = `
+        <table>
+          <tr>
+            <td>
+              <ac:link>
+                <ri:user ri:userkey="402880824c1234" ri:account-id="5a1234"/>
+                <ac:plain-text-link-body><![CDATA[John Doe]]></ac:plain-text-link-body>
+              </ac:link>
+            </td>
+          </tr>
+        </table>
+      `;
+
+      const tables = parseTablesFromHtml(html, { showUserNames: true });
+      assert.ok(tables[0].rows[0].cells[0].text.includes('@John Doe'));
+    });
+
+    it('should extract user display name from ac:link-body', () => {
+      const html = `
+        <table>
+          <tr>
+            <td>
+              <ac:link>
+                <ri:user ri:userkey="402880824c1234"/>
+                <ac:link-body>Jane Smith</ac:link-body>
+              </ac:link>
+            </td>
+          </tr>
+        </table>
+      `;
+
+      const tables = parseTablesFromHtml(html, { showUserNames: true });
+      assert.ok(tables[0].rows[0].cells[0].text.includes('@Jane Smith'));
+    });
+
+    it('should redact user names when showUserNames is false', () => {
+      const html = `
+        <table>
+          <tr>
+            <td>
+              <ac:link>
+                <ri:user ri:userkey="402880824c1234"/>
+                <ac:plain-text-link-body><![CDATA[John Doe]]></ac:plain-text-link-body>
+              </ac:link>
+            </td>
+          </tr>
+        </table>
+      `;
+
+      const tables = parseTablesFromHtml(html, { showUserNames: false });
+      assert.ok(tables[0].rows[0].cells[0].text.includes('@[redacted]'));
+      assert.ok(!tables[0].rows[0].cells[0].text.includes('John Doe'));
+    });
+
+    it('should show user names by default', () => {
+      const html = `
+        <table>
+          <tr>
+            <td>
+              <ac:link>
+                <ri:user ri:userkey="402880824c1234"/>
+                <ac:plain-text-link-body><![CDATA[Default User]]></ac:plain-text-link-body>
+              </ac:link>
+            </td>
+          </tr>
+        </table>
+      `;
+
+      // No options passed - should default to showing names
+      const tables = parseTablesFromHtml(html);
+      assert.ok(tables[0].rows[0].cells[0].text.includes('@Default User'));
+    });
+
+    it('should pass showUserNames option through extractTable', () => {
+      const html = `
+        <table>
+          <tr>
+            <td>
+              <ac:link>
+                <ri:user ri:userkey="402880824c1234"/>
+                <ac:plain-text-link-body><![CDATA[Extract User]]></ac:plain-text-link-body>
+              </ac:link>
+            </td>
+          </tr>
+        </table>
+      `;
+
+      const table = extractTable(html, 0, { showUserNames: false });
+      assert.ok(table.rows[0].cells[0].text.includes('@[redacted]'));
+    });
+
+    it('should use placeholder when no display name found', () => {
+      const html = `
+        <table>
+          <tr>
+            <td>
+              <ac:link>
+                <ri:user ri:userkey="402880824c1234"/>
+              </ac:link>
+            </td>
+          </tr>
+        </table>
+      `;
+
+      const tables = parseTablesFromHtml(html, { showUserNames: true });
+      assert.ok(tables[0].rows[0].cells[0].text.includes('@[user]'));
+    });
+  });
 });

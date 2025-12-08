@@ -177,7 +177,9 @@ export class Poller extends EventEmitter {
       const pageContent = await this.client.getPageContent(pageId);
 
       // Step 3: Parse table from content
-      const table = extractTable(pageContent.body, this.config.table.targetTableIndex);
+      const table = extractTable(pageContent.body, this.config.table.targetTableIndex, {
+        showUserNames: this.config.table.showUserNames,
+      });
 
       if (!table) {
         logger.warn(

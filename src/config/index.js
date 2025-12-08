@@ -103,6 +103,7 @@ function loadFromEnvironment() {
       targetTableIndex: parseInteger(process.env.TARGET_TABLE_INDEX, 0),
       monitorColumns: parseIntArray(process.env.MONITOR_COLUMNS),
       ignoreHeaderChanges: parseBoolean(process.env.IGNORE_HEADER_CHANGES, false),
+      showUserNames: parseBoolean(process.env.SHOW_USER_NAMES, true),
     },
     webhook: {
       enabled: parseBoolean(process.env.WEBHOOK_ENABLED, false),
