@@ -5,7 +5,12 @@
       "Bash(npm install:*)",
       "Bash(npm test:*)",
       "Bash(git checkout:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(timeout 5 node:*)",
+      "Bash(MOCK_CONFLUENCE_PORT=3099 node:*)",
+      "Bash(curl:*)",
+      "Bash(CONFLUENCE_BASE_URL=http://localhost:3099 CONFLUENCE_EMAIL=test@example.com CONFLUENCE_API_TOKEN=mock-token CONFLUENCE_PAGE_ID=123456789 POLL_INTERVAL_MS=30000 node src/cli/validate.js:*)",
+      "Bash(CONFLUENCE_BASE_URL=http://localhost:3099 CONFLUENCE_EMAIL=test@example.com CONFLUENCE_API_TOKEN=mock-token CONFLUENCE_PAGE_ID=123456789 POLL_INTERVAL_MS=30000 node src/cli/index.js:*)"
     ],
     "deny": [],
     "ask": []

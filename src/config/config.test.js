@@ -67,7 +67,7 @@ describe('Configuration', () => {
       assert.ok(result.config);
     });
 
-    it('should reject HTTP base URLs', () => {
+    it('should reject HTTP base URLs for non-localhost', () => {
       const config = {
         ...validConfig,
         confluence: {
@@ -79,6 +79,32 @@ describe('Configuration', () => {
       const result = validateConfig(config);
       assert.strictEqual(result.success, false);
       assert.ok(result.errors.some((e) => e.includes('HTTPS')));
+    });
+
+    it('should allow HTTP for localhost (mock server)', () => {
+      const config = {
+        ...validConfig,
+        confluence: {
+          ...validConfig.confluence,
+          baseUrl: 'http://localhost:3001',
+        },
+      };
+
+      const result = validateConfig(config);
+      assert.strictEqual(result.success, true);
+    });
+
+    it('should allow HTTP for 127.0.0.1 (mock server)', () => {
+      const config = {
+        ...validConfig,
+        confluence: {
+          ...validConfig.confluence,
+          baseUrl: 'http://127.0.0.1:3001',
+        },
+      };
+
+      const result = validateConfig(config);
+      assert.strictEqual(result.success, true);
     });
 
     it('should reject invalid email', () => {

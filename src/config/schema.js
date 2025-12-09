@@ -15,8 +15,13 @@ export const confluenceConfigSchema = z.object({
     .string()
     .url('CONFLUENCE_BASE_URL must be a valid URL')
     .refine(
-      (url) => url.startsWith('https://'),
-      'CONFLUENCE_BASE_URL must use HTTPS for security'
+      (url) => {
+        // Allow HTTP for localhost (mock server/development)
+        const isLocalhost = url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1');
+        // Require HTTPS for all other URLs
+        return isLocalhost || url.startsWith('https://');
+      },
+      'CONFLUENCE_BASE_URL must use HTTPS for security (HTTP allowed for localhost only)'
     ),
   email: z
     .string()
